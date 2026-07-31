@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Email Automator</title>
+<style>
+  :root {
+    --bg:#f1f5f9; --card:#fff; --border:#e2e8f0; --text:#0f172a; --muted:#64748b;
+    --accent:#4f46e5; --accent-dark:#4338ca; --green:#16a34a; --red:#dc2626; --amber:#b45309;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  [hidden] { display:none !important; }
+
+  .lock-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:24px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .lock-card { width:340px; text-align:center; }
+  .lock-card h1 { font-size:22px; margin-bottom:18px; }
+  input, textarea, select { width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; }
+  input:focus, textarea:focus { outline:2px solid var(--accent); outline-offset:-1px; }
+  label { display:block; font-size:13px; font-weight:600; color:var(--muted); margin:12px 0 4px; }
+  .hint { font-size:12px; color:var(--muted); margin-top:4px; }
+
+  header { background:var(--card); border-bottom:1px solid var(--border); padding:12px 20px; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10; }
+  header h1 { font-size:18px; }
+  main { max-width:960px; margin:20px auto; padding:0 16px 60px; }
+
+  .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .tab { padding:8px 16px; border:1px solid var(--border); background:var(--card); border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; color:var(--muted); }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .panel { display:none; }
+  .panel.active { display:block; }
+
+  .row { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+  .row > div { flex:1; min-width:180px; }
+  .btn { padding:9px 18px; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; background:var(--accent); color:#fff; }
+  .btn:hover { background:var(--accent-dark); }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+  .btn.gray { background:#e2e8f0; color:var(--text); }
+  .btn.gray:hover { background:#cbd5e1; }
+  .btn.green { background:var(--green); }
+  .btn.red { background:var(--red); }
+
+  .badge { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; }
+  .badge.pending { background:#e2e8f0; color:var(--muted); }
+  .badge.sent { background:#dcfce7; color:var(--green); }
+  .badge.failed { background:#fee2e2; color:var(--red); }
+
+  .progress { height:10px; background:#e2e8f0; border-radius:99px; overflow:hidden; margin:6px 0 2px; }
+  .progress > div { height:100%; background:var(--accent); width:0; transition:width .4s; }
+  .stat-line { font-size:13px; color:var(--muted); margin-top:8px; }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; background:var(--card); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  th, td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); }
+  th { background:#f8fafc; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
+  tr:last-child td { border-bottom:none; }
+  .err { color:var(--red); font-size:12px; }
+
+  #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--text); color:#fff; padding:10px 18px; border-radius:8px; font-size:14px; display:none; z-index:100; }
+  #toast.ok { background:var(--green); }
+  #toast.bad { background:var(--red); }
+  .msg { font-size:13px; min-height:18px; margin-top:10px; }
+  .msg.ok { color:var(--green); }
+  .msg.bad { color:var(--red); }
+  .file-drop { border:2px dashed var(--border); border-radius:10px; padding:26px; text-align:center; color:var(--muted); cursor:pointer; font-size:14px; }
+  .file-drop:hover { border-color:var(--accent); color:var(--accent); }
+  .kv { display:flex; justify-content:space-between; font-size:14px; margin:6px 0; }
+  .kv b { font-weight:600; }
+  .preview-box { background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:12px; font-size:13px; white-space:pre-wrap; font-family:ui-monospace,monospace; }
+  .section-title { font-size:15px; font-weight:700; margin:18px 0 6px; }
+  .small { font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- LOCK SCREEN -->
+<div class="lock-wrap" id="lockScreen">
+  <div class="card lock-card">
+    <h1>Email Automator</h1>
+    <input type="password" id="pinInput" placeholder="PIN" autocomplete="off">
+    <div class="msg" id="lockMsg"></div>
+    <div style="margin-top:14px">
+      <button class="btn" id="lockBtn" style="width:100%">Login</button>
+    </div>
+    <p class="small" style="margin-top:14px" id="lockHint"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" hidden>
+  <header>
+    <h1>Email Automator</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="small" id="todayChip"></span>
+      <button class="btn gray" id="logoutBtn">Logout</button>
+    </div>
+  </header>
+  <main>
+    <div class="tabs">
+      <button class="tab active" data-panel="settings">Settings</button>
+      <button class="tab" data-panel="template">Template</button>
+      <button class="tab" data-panel="csv">CSV &amp; Send</button>
+      <button class="tab" data-panel="status">Status</button>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="panel active" id="panel-settings">
+      <div class="card">
+        <label>SMTP Host</label>
+        <input id="fHost" value="smtp.gmail.com">
+        <div class="row">
+          <div><label>Port</label><input id="fPort" value="465"></div>
+          <div><label>Secure (SSL)</label>
+            <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-top:10px">
+              <input type="checkbox" id="fSecure" checked style="width:auto"> 465 = SSL on, 587 = off
+            </label>
+          </div>
+        </div>
+        <div class="row">
+          <div><label>Aapka Email</label><input id="fUser" placeholder="you@gmail.com"></div>
+          <div><label>Password / App Password</label><input id="fPass" type="password" placeholder="App Password"></div>
+        </div>
+        <label>Sender Name (optional)</label>
+        <input id="fFrom" placeholder="Aapka Naam">
+        <p class="hint">Gmail me App Password use karo: Google Account → Security → 2-Step Verification ON → App passwords. Plain password kaam nahi karega.</p>
+        <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+          <button class="btn" id="saveSettingsBtn">Save Settings</button>
+          <button class="btn green" id="testBtn">Test Email (khud ko)</button>
+        </div>
+        <div class="section-title">PIN Change</div>
+        <div class="row">
+          <div><input id="newPin" type="password" placeholder="Naya PIN (4+ chars)"></div>
+          <div><button class="btn gray" id="changePinBtn">Change PIN</button></div>
+        </div>
+        <div class="msg" id="settingsMsg"></div>
+      </div>
+    </div>
+
+    <!-- TEMPLATE -->
+    <div class="panel" id="panel-template">
+      <div class="card">
+        <label>Subject</label>
+        <input id="fSubject" placeholder="Hello {name}, ...">
+        <label>Body</label>
+        <textarea id="fBody" rows="10" placeholder="Hi {name},&#10;&#10;Body me {name} likho — har user ka naam apne aap aa jayega.&#10;&#10;Spam se bachne ke tips: personal tone rakho, ALL CAPS/sahi nahi, $/!!/click-here jaisi words avoid karo, sirf 1-2 trusted links."></textarea>
+        <p class="hint">{name} placeholder har email me sirf naam change karta hai. Baaki template same rehta hai.</p>
+        <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+          <button class="btn" id="previewBtn">Update Preview</button>
+          <button class="btn" id="saveTemplateBtn">Save Template</button>
+        </div>
+        <div class="preview-box" id="previewBox" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <!-- CSV -->
+    <div class="panel" id="panel-csv">
+      <div class="card">
+        <div class="file-drop" id="fileDrop">CSV file yahan drop karo ya click karke choose karo</div>
+        <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+        <p class="hint">CSV format: pehli line headers — <b>name,email</b> (column order koi bhi, case matter nahi). Invalid/duplicate emails automatically skip.</p>
+        <div class="msg" id="csvMsg"></div>
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <button class="btn" id="startBtn" disabled>Start Sending</button>
+          <button class="btn red" id="pauseBtn" disabled>Pause</button>
+          <button class="btn gray" id="clearCsvBtn">CSV Clear</button>
+        </div>
+        <div class="section-title">Queue Info</div>
+        <div class="kv"><span>Recipients (CSV se)</span><b id="csvCount">0</b></div>
+        <div class="kv"><span>Queue me active</span><b id="queueCount">0</b></div>
+        <p class="hint">Har 30 min me ek email, max 15/day. Netlify pe 24/7 chalta rahega jab tak saari emails na bhej de — laptop band ho to bhi.</p>
+      </div>
+    </div>
+
+    <!-- STATUS -->
+    <div class="panel" id="panel-status">
+      <div class="card" style="margin-bottom:16px">
+        <div class="kv"><span>Aaj bheje</span><b id="todayCount">0 / 15</b></div>
+        <div class="progress"><div id="todayBar"></div></div>
+        <div class="stat-line" id="todayInfo"></div>
+        <div class="kv" style="margin-top:14px"><span>Queue progress</span><b id="queueProgress">-</b></div>
+        <div class="progress"><div id="queueBar"></div></div>
+        <div class="stat-line" id="workerInfo"></div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Sent At</th><th>Error</th></tr></thead>
+          <tbody id="statusBody"></tbody>
+        </table>
+        <div class="stat-line" id="tableInfo"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = '/.netlify/functions/api'
+let pin = null
+let pollTimer = null
+
+const $ = (id) => document.getElementById(id)
+
+async function call(body) {
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...(pin ? { pin } : {}), ...body }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Something went wrong')
+  return data
+}
+
+function toast(text, ok = true) {
+  const t = $('toast')
+  t.textContent = text
+  t.className = ok ? 'ok' : 'bad'
+  t.style.display = 'block'
+  clearTimeout(t._timer)
+  t._timer = setTimeout(() => (t.style.display = 'none'), 3500)
+}
+
+function setMsg(el, text, ok) {
+  el.textContent = text || ''
+  el.className = 'msg ' + (ok ? 'ok' : 'bad')
+}
+
+// ============ LOCK ============
+async function init() {
+  const res = await fetch(API)
+  const d = await res.json().catch(() => ({}))
+  const hasPin = !!d.hasPin
+  $('lockBtn').textContent = hasPin ? 'Login' : 'Set PIN'
+  $('lockHint').textContent = hasPin
+    ? 'Apna PIN daal ke login karo'
+    : 'Pehli baar — PIN set karo (sirf aap jaanoge)'
+  $('pinInput').focus()
+}
+
+async function doLock() {
+  const value = $('pinInput').value
+  if (value.length < 4) { setMsg($('lockMsg'), 'PIN kam se kam 4 characters ka rakho', false); return }
+  try {
+    const hasPin = await fetch(API).then((r) => r.json()).then((d) => !!d.hasPin)
+    if (!hasPin) {
+      await call({ action: 'setPin', pin: value })
+      setMsg($('lockMsg'), 'PIN set ho gaya! Ab dobara daal ke login karo', true)
+      $('lockBtn').textContent = 'Login'
+    } else {
+      await call({ action: 'login', pin: value })
+      pin = value
+      $('lockScreen').hidden = true
+      $('app').hidden = false
+      loadAll()
+      pollTimer = setInterval(loadStatus, 20000)
+    }
+  } catch (e) {
+    setMsg($('lockMsg'), e.message, false)
+  }
+  $('pinInput').value = ''
+}
+
+$('lockBtn').addEventListener('click', doLock)
+$('pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLock() })
+$('logoutBtn').addEventListener('click', () => {
+  pin = null
+  clearInterval(pollTimer)
+  $('app').hidden = true
+  $('lockScreen').hidden = false
+  $('pinInput').focus()
+})
+
+// ============ TABS ============
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'))
+    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'))
+    tab.classList.add('active')
+    $('panel-' + tab.dataset.panel).classList.add('active')
+  })
+})
+
+// ============ SETTINGS ============
+async function saveSettings() {
+  try {
+    await call({
+      action: 'saveSettings',
+      host: $('fHost').value, port: $('fPort').value, secure: $('fSecure').checked,
+      user: $('fUser').value, pass: $('fPass').value, fromName: $('fFrom').value,
+      subject: $('fSubject').value, body: $('fBody').value,
+    })
+    setMsg($('settingsMsg'), 'Settings + template saved', true)
+    updatePreview()
+  } catch (e) { setMsg($('settingsMsg'), e.message, false) }
+}
+$('saveSettingsBtn').addEventListener('click', saveSettings)
+$('saveTemplateBtn').addEventListener('click', saveSettings)
+
+async function testSend() {
+  try {
+    await saveSettings()
+    const d = await call({ action: 'testSend' })
+    toast(d.message || 'OK')
+  } catch (e) { toast(e.message, false) }
+}
+$('testBtn').addEventListener('click', testSend)
+
+$('changePinBtn').addEventListener('click', async () => {
+  const np = $('newPin').value
+  if (np.length < 4) { toast('Naya PIN kam se kam 4 characters', false); return }
+  try {
+    await call({ action: 'changePin', newPin: np })
+    $('newPin').value = ''
+    toast('PIN change ho gaya')
+  } catch (e) { toast(e.message, false) }
+})
+
+// ============ TEMPLATE ============
+function updatePreview() {
+  const subj = $('fSubject').value.split('{name}').join('Test')
+  const body = $('fBody').value.split('{name}').join('Test')
+  $('previewBox').textContent = body.trim() ? `To: test@example.com\nSubject: ${subj}\n\n${body}` : ''
+}
+$('previewBtn').addEventListener('click', updatePreview)
+
+// ============ CSV ============
+const drop = $('fileDrop')
+drop.addEventListener('click', () => $('csvFile').click())
+$('csvFile').addEventListener('change', (e) => { if (e.target.files[0]) uploadCsv(e.target.files[0]) })
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.style.borderColor = 'var(--accent)' })
+drop.addEventListener('dragleave', () => (drop.style.borderColor = ''))
+drop.addEventListener('drop', (e) => {
+  e.preventDefault(); drop.style.borderColor = ''
+  if (e.dataTransfer.files[0]) uploadCsv(e.dataTransfer.files[0])
+})
+
+async function uploadCsv(file) {
+  if (!file.name.toLowerCase().endsWith('.csv')) { toast('CSV file choose karo', false); return }
+  const text = await file.text()
+  try {
+    const d = await call({ action: 'uploadCsv', csv: text })
+    setMsg($('csvMsg'), `CSV parsed: ${d.count} recipients ready. Start dabao.`, true)
+    loadStatus()
+  } catch (e) { setMsg($('csvMsg'), e.message, false) }
+}
+
+$('startBtn').addEventListener('click', async () => {
+  try {
+    const d = await call({ action: 'start' })
+    toast(`${d.count} emails queue me — 30 min pe ek, max 15/day`)
+    loadStatus()
+  } catch (e) { toast(e.message, false) }
+})
+
+$('pauseBtn').addEventListener('click', async () => {
+  try {
+    const d = await call({ action: $('pauseBtn').textContent === 'Pause' ? 'pause' : 'resume' })
+    toast(d.paused ? 'Paused — bhejna ruk gaya' : 'Resumed — agla email 30 min me')
+    loadStatus()
+  } catch (e) { toast(e.message, false) }
+})
+
+$('clearCsvBtn').addEventListener('click', async () => {
+  try {
+    await call({ action: 'uploadCsv', csv: 'name,email\n' })
+    setMsg($('csvMsg'), 'CSV cleared', true)
+    loadStatus()
+  } catch (e) { toast(e.message, false) }
+})
+
+// ============ STATUS ============
+function badge(status) {
+  return `<span class="badge ${status}">${status}</span>`
+}
+
+async function loadStatus() {
+  if (!pin) return
+  try {
+    const d = await call({ action: 'status' })
+    const items = d.queue?.items || []
+    const sent = items.filter((i) => i.status === 'sent').length
+    const failed = items.filter((i) => i.status === 'failed').length
+    const pending = items.length - sent - failed
+    const today = d.daily?.count || 0
+    const paused = !!d.queue?.paused
+
+    $('todayCount').textContent = `${today} / 15`
+    $('todayBar').style.width = Math.min(100, (today / 15) * 100) + '%'
+    $('todayInfo').textContent = today >= 15
+      ? 'Aaj ki limit poore ho gayi — kal dobara shuru hoga (queue saved hai)'
+      : 'Har 30 min me ek email bhejta hai'
+
+    $('queueProgress').textContent = items.length ? `${sent + failed} / ${items.length}` : '-'
+    $('queueBar').style.width = items.length ? ((sent + failed) / items.length) * 100 + '%' : '0%'
+    $('queueCount').textContent = items.length
+
+    const running = paused ? 'Paused' : items.some((i) => i.status === 'pending')
+      ? 'Worker active — 24/7 chal raha hai' : items.length ? 'Queue complete' : 'No queue'
+    $('workerInfo').textContent = running
+
+    $('todayChip').textContent = `Aaj: ${today}/15${paused ? ' • Paused' : ''}`
+    $('pauseBtn').textContent = paused ? 'Resume' : 'Pause'
+    $('pauseBtn').disabled = !items.length
+
+    $('csvCount').textContent = d.draftCount
+
+    const body = $('statusBody')
+    body.innerHTML = items.length
+      ? items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.email)}</td><td>${badge(i.status)}</td><td>${esc(i.sentAt || '')}</td><td class="err">${esc(i.error || '')}</td></tr>`).join('')
+      : `<tr><td colspan="5">Abhi koi queue nahi — CSV upload karke Start dabao</td></tr>`
+    $('tableInfo').textContent = `total ${items.length} | sent ${sent} | pending ${pending} | failed ${failed}`
+  } catch (e) {
+    /* ignore polling errors */
+  }
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
+
+async function loadAll() {
+  try {
+    const d = await call({ action: 'getSettings' })
+    const s = d.settings || {}
+    if (s.host) $('fHost').value = s.host
+    if (s.port) $('fPort').value = s.port
+    $('fSecure').checked = s.secure !== undefined ? !!s.secure : Number(s.port) === 465
+    if (s.user) $('fUser').value = s.user
+    if (s.pass) $('fPass').value = s.pass
+    if (s.fromName) $('fFrom').value = s.fromName
+    if (s.subject) $('fSubject').value = s.subject
+    if (s.body) $('fBody').value = s.body
+    updatePreview()
+  } catch (e) { /* ignore */ }
+  loadStatus()
+}
+
+init()
+</script>
+</body>
+</html>

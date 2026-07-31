@@ -1,0 +1,13 @@
+[build]
+  publish = "public"
+
+[functions."api"]
+  path = "/api"
+  method = ["GET", "POST"]
+
+[functions."sendScheduled"]
+  schedule = "0,30 * * * *"
+
+[functions."cron-ping"]
+  path = "/cron-ping"
+  method = ["GET"]

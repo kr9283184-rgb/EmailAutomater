@@ -1,0 +1,17 @@
+{
+  "name": "email-automator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0",
+    "nodemailer": "^6.9.16"
+  },
+  "devDependencies": {
+    "netlify-cli": "^17.37.1"
+  }
+}
