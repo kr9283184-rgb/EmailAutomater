@@ -405,6 +405,7 @@ async function loadStatus() {
     $('pauseBtn').disabled = !items.length
 
     $('csvCount').textContent = d.draftCount
+    $('startBtn').disabled = !d.draftCount
 
     const body = $('statusBody')
     body.innerHTML = items.length
