@@ -1,5 +1,15 @@
-# Local Netlify folder
-.netlify
+# Data (JSON storage)
+data/
 
-# Dependencies
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Netlify
+.netlify
 node_modules/
+
+# OS / editor
+.DS_Store

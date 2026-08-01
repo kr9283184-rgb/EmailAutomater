@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Email Automator</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- LOCK SCREEN -->
+<div class="lock-wrap" id="lockScreen">
+  <div class="card lock-card">
+    <div class="logo">✉</div>
+    <h1>Email Automator</h1>
+    <p class="muted">Enter your PIN to access the dashboard</p>
+    <input type="password" id="pinInput" placeholder="PIN" autocomplete="off" autofocus>
+    <div class="msg" id="lockMsg"></div>
+    <button class="btn block" id="lockBtn">Login</button>
+    <p class="small muted" id="lockHint"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" hidden>
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">✉</span> Email Automator</div>
+    <nav>
+      <button class="nav-item active" data-panel="dashboard">Dashboard</button>
+      <button class="nav-item" data-panel="campaign">Campaign</button>
+      <button class="nav-item" data-panel="settings">Settings</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="kv"><span>Today</span><b id="todayChip">0</b></div>
+      <button class="btn ghost block" id="logoutBtn">Logout</button>
+    </div>
+  </aside>
+
+  <main class="content">
+
+    <!-- DASHBOARD -->
+    <section class="panel active" id="panel-dashboard">
+      <div class="page-head">
+        <h2>Dashboard</h2>
+        <span class="pill" id="workerPill">—</span>
+      </div>
+
+      <div class="cards">
+        <div class="card stat">
+          <div class="stat-label">Recipients</div>
+          <div class="stat-value" id="statTotal">0</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-label">Sent</div>
+          <div class="stat-value green" id="statSent">0</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-label">Pending</div>
+          <div class="stat-value amber" id="statPending">0</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-label">Failed</div>
+          <div class="stat-value red" id="statFailed">0</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Daily sending limit</div>
+          <div class="kv"><span>Sent today</span><b id="todayCount">0 / 15</b></div>
+          <div class="progress"><div id="todayBar"></div></div>
+          <div class="hint" id="todayInfo">One email every 30 minutes, max 15 per day</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Queue progress</div>
+          <div class="kv"><span>Processed</span><b id="queueProgress">—</b></div>
+          <div class="progress"><div id="queueBar"></div></div>
+          <div class="hint" id="queueInfo">Recipients move from pending to sent/failed</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Status breakdown</div>
+          <div class="stack" id="stack"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Recent activity</div>
+          <ul class="log" id="logList"></ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Recipients</div>
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Sent At</th><th>Error</th></tr></thead>
+          <tbody id="statusBody"></tbody>
+        </table>
+        <div class="hint" id="tableInfo"></div>
+      </div>
+    </section>
+
+    <!-- CAMPAIGN -->
+    <section class="panel" id="panel-campaign">
+      <div class="page-head"><h2>Campaign</h2></div>
+
+      <div class="card">
+        <div class="card-title">Message template</div>
+        <label>Subject</label>
+        <input id="fSubject" placeholder="Hello {name}, ...">
+        <label>Body</label>
+        <textarea id="fBody" rows="9" placeholder="Hi {name},&#10;&#10;Write your message here. Use {name} to personalize each email."></textarea>
+        <div class="hint">{name} is replaced with each recipient's name. Everything else stays identical.</div>
+        <div class="btn-row">
+          <button class="btn" id="previewBtn">Update preview</button>
+          <button class="btn outline" id="saveTemplateBtn">Save template</button>
+        </div>
+        <div class="preview-box" id="previewBox"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Recipients (CSV)</div>
+        <div class="file-drop" id="fileDrop">Drop a CSV here or click to choose</div>
+        <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+        <div class="hint">CSV format: header row with <b>name,email</b> (any column order). Invalid or duplicate emails are skipped automatically.</div>
+        <div class="msg" id="csvMsg"></div>
+        <div class="btn-row">
+          <button class="btn" id="startBtn" disabled>Start sending</button>
+          <button class="btn red" id="pauseBtn" disabled>Pause</button>
+          <button class="btn ghost" id="clearCsvBtn">Clear CSV</button>
+        </div>
+        <div class="kv"><span>Recipients ready from CSV</span><b id="csvCount">0</b></div>
+        <div class="kv"><span>Recipients in active queue</span><b id="queueCount">0</b></div>
+        <div class="kv"><span>Paused</span><b id="pausedChip">No</b></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="panel" id="panel-settings">
+      <div class="page-head"><h2>Settings</h2></div>
+
+      <div class="card">
+        <div class="card-title">SMTP connection</div>
+        <label>SMTP host</label>
+        <input id="fHost" value="smtp.gmail.com">
+        <div class="row">
+          <div><label>Port</label><input id="fPort" value="465"></div>
+          <div>
+            <label style="display:flex;align-items:center;gap:8px;font-weight:400;padding-top:10px">
+              <input type="checkbox" id="fSecure" checked style="width:auto"> SSL / TLS (465 = SSL, 587 = STARTTLS)
+            </label>
+          </div>
+        </div>
+        <div class="row">
+          <div><label>Your email</label><input id="fUser" placeholder="you@gmail.com"></div>
+          <div><label>Password / App password</label><input id="fPass" type="password" placeholder="App password"></div>
+        </div>
+        <label>Sender name (optional)</label>
+        <input id="fFrom" placeholder="Your name">
+        <div class="hint">Gmail: enable 2-Step Verification, then create an App Password under Google Account → Security.</div>
+        <div class="btn-row">
+          <button class="btn" id="saveSettingsBtn">Save settings</button>
+          <button class="btn green" id="testBtn">Send test email</button>
+        </div>
+        <div class="msg" id="settingsMsg"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Security</div>
+        <div class="row">
+          <div><input id="newPin" type="password" placeholder="New PIN (4+ characters)"></div>
+          <div><button class="btn ghost" id="changePinBtn">Change PIN</button></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
