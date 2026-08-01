@@ -95,6 +95,26 @@ gunicorn -w 1 -b 0.0.0.0:8000 app:app
 5. Press **Start** — emails are sent automatically by the background scheduler at one per `GAP_MINUTES`, up to `DAILY_LIMIT` per day.
 6. Watch progress on the **Dashboard**.
 
+## Deploying on Railway
+
+Railway's filesystem is **ephemeral** (wiped on every restart), so persistent storage must live on a Volume.
+
+1. Push this repo to GitHub.
+2. In Railway: **New Project → Deploy from GitHub repo** → select `EmailAutomater`.
+3. Add a **Volume** to the service:
+   - Mount path: `/data`
+   - (any size ≥ 1 GB is fine)
+4. Set the environment variables in the service settings:
+   - `DATA_DIR=/data`
+   - `PERSIST_CREDS=1`
+   - `CREDS_KEY=<generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">`
+   - `TIMEZONE=Europe/Brussels` (or your recipients' tz)
+   - `DAILY_LIMIT=100`, `GAP_MINUTES=5`, `SEND_START_HOUR=8`, `SEND_END_HOUR=21` (defaults, optional)
+5. The `Procfile` starts `gunicorn -w 1` (single worker — required, the scheduler runs inside it) on the `PORT` Railway provides.
+6. Deploy, open the app URL, set your PIN, save SMTP settings once — credentials get encrypted to the volume (`/data/creds.enc`) and survive restarts automatically.
+
+Note: `starttls` is required for port 587 — verify with **Send test email** on the deployed site.
+
 ## Running Tests
 
 ```bash
