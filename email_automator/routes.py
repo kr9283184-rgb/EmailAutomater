@@ -43,6 +43,15 @@ def action():
             core.set_json("meta", core.create_pin_meta(str(body["newPin"])))
             return out({"ok": True})
 
+        if action_name == "setCreds":
+            if not core.check_pin(body.get("pin")):
+                return out({"error": "Wrong PIN"}, 401)
+            user = str(body.get("smtpUser") or "").strip()
+            password = str(body.get("smtpPass") or "")
+            if not core.set_smtp_creds(user, password):
+                return out({"error": "Email and password are both required"})
+            return out({"ok": True})
+
         if action_name == "saveSettings":
             if not core.check_pin(body.get("pin")):
                 return out({"error": "Wrong PIN"}, 401)
@@ -51,22 +60,33 @@ def action():
                 "host": str(body.get("host") or "").strip() or "smtp.gmail.com",
                 "port": port,
                 "secure": bool(body.get("secure", port == 465)),
-                "user": str(body.get("user") or "").strip(),
-                "pass": str(body.get("pass") or ""),
                 "fromName": str(body.get("fromName") or "").strip(),
                 "subject": str(body.get("subject") or ""),
                 "body": str(body.get("body") or ""),
             }
-            if not s["user"] or not s["pass"]:
+            user = str(body.get("user") or "").strip()
+            password = str(body.get("pass") or "")
+            if user and password:
+                core.set_smtp_creds(user, password)
+            elif not core.get_smtp_creds()["user"] or not core.get_smtp_creds()["pass"]:
                 return out({"error": "Email and password are both required"})
             core.set_json("settings", s)
-            core.log_event("settings", "SMTP settings saved")
-            return out({"ok": True})
+            core.log_event("settings", "SMTP settings saved (credentials stay in your browser)")
+            return out({"ok": True, "spam": core.spam_check(s["subject"], s["body"])})
 
         if action_name == "getSettings":
             if not core.check_pin(body.get("pin")):
                 return out({"error": "Wrong PIN"}, 401)
-            return out({"settings": core.get_json("settings") or {}})
+            settings = core.get_json("settings") or {}
+            creds = core.get_smtp_creds()
+            resp = {
+                "settings": settings,
+                "user": creds["user"],
+                "credsLoaded": bool(creds["user"] and creds["pass"]),
+            }
+            if settings:
+                resp["spam"] = core.spam_check(settings.get("subject"), settings.get("body"))
+            return out(resp)
 
         if action_name == "uploadCsv":
             if not core.check_pin(body.get("pin")):
@@ -83,10 +103,17 @@ def action():
             draft = core.get_json("draft") or {"items": []}
             if not draft.get("items"):
                 return out({"error": "Upload a CSV first"})
+            settings = core.get_json("settings") or {}
+            spam = core.spam_check(settings.get("subject"), settings.get("body"))
+            if spam["score"] >= core.SPAM_BLOCK:
+                return out({"error": f"Blocked: spam score {spam['score']}. " + "; ".join(spam["issues"])})
             core.set_json("queue", {"items": draft["items"], "paused": False})
             core.set_json("draft", {"items": []})
             core.log_event("campaign", f"Campaign started with {len(draft['items'])} recipients")
-            return out({"ok": True, "count": len(draft["items"])})
+            resp = {"ok": True, "count": len(draft["items"])}
+            if spam["score"] >= core.SPAM_WARN:
+                resp["spamWarning"] = spam
+            return out(resp)
 
         if action_name in ("pause", "resume"):
             if not core.check_pin(body.get("pin")):
@@ -103,22 +130,33 @@ def action():
             settings = core.get_json("settings") or {}
             queue = core.get_json("queue") or {"items": []}
             draft = core.get_json("draft") or {"items": []}
-            daily = core.get_json("daily") or {"date": core.today_utc(), "count": 0, "lastSentAt": ""}
+            daily = core.get_json("daily") or {"date": core.today_key(), "count": 0, "lastSentAt": ""}
+            creds = core.get_smtp_creds()
             return out({
-                "settings": {"exists": bool(settings.get("user") and settings.get("pass"))},
+                "settings": {"exists": bool(settings) and bool(creds["user"] and creds["pass"])},
+                "credsLoaded": bool(creds["user"] and creds["pass"]),
                 "queue": queue,
                 "draftCount": len(draft.get("items", [])),
                 "daily": daily,
                 "logs": core.get_json("logs") or [],
-                "limits": {"daily": core.DAILY_LIMIT, "gapMinutes": core.GAP_MINUTES},
+                "limits": {
+                    "daily": core.DAILY_LIMIT,
+                    "gapMinutes": core.GAP_MINUTES,
+                    "domainLimit": core.DOMAIN_DAILY_LIMIT,
+                    "windowStart": core.SEND_START_HOUR,
+                    "windowEnd": core.SEND_END_HOUR,
+                    "tz": core.TIMEZONE,
+                },
             })
 
         if action_name == "testSend":
             if not core.check_pin(body.get("pin")):
                 return out({"error": "Wrong PIN"}, 401)
             settings = core.get_json("settings")
-            if not settings or not settings.get("user") or not settings.get("pass"):
-                return out({"error": "Save settings first"})
+            creds = core.get_smtp_creds()
+            if not settings or not creds["user"] or not creds["pass"]:
+                return out({"error": "Save settings with your email and password first"})
+            settings = dict(settings, user=creds["user"], password=creds["pass"])
             try:
                 core.send_mail(
                     settings,

@@ -1,7 +1,11 @@
 const API = '/api'
+const LS_USER = 'ea_smtp_user'
+const LS_PASS = 'ea_smtp_pass'
 let pin = null
 let pollTimer = null
-let limits = { daily: 15, gapMinutes: 30 }
+let limits = { daily: 100, gapMinutes: 5 }
+let wasComplete = false
+let hadQueue = false
 
 const $ = (id) => document.getElementById(id)
 
@@ -61,7 +65,11 @@ async function doLock() {
       $('lockScreen').hidden = true
       $('app').hidden = false
       loadAll()
+      syncCreds()
       pollTimer = setInterval(loadStatus, 10000)
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {})
+      }
     }
   } catch (e) {
     setMsg($('lockMsg'), e.message, false)
@@ -90,17 +98,49 @@ document.querySelectorAll('.nav-item').forEach((btn) => {
 })
 
 // ============ SETTINGS ============
+function syncCreds() {
+  const user = localStorage.getItem(LS_USER) || ''
+  const pass = localStorage.getItem(LS_PASS) || ''
+  if (!user || !pass || !pin) return
+  call({ action: 'setCreds', smtpUser: user, smtpPass: pass })
+    .then(() => loadStatus())
+    .catch(() => {})
+}
+
+function loadLocalCreds() {
+  const user = localStorage.getItem(LS_USER)
+  const pass = localStorage.getItem(LS_PASS)
+  if (user) $('fUser').value = user
+  if (pass) $('fPass').value = pass
+}
+
 async function saveSettings() {
   try {
-    await call({
+    const d = await call({
       action: 'saveSettings',
       host: $('fHost').value, port: $('fPort').value, secure: $('fSecure').checked,
       user: $('fUser').value, pass: $('fPass').value, fromName: $('fFrom').value,
       subject: $('fSubject').value, body: $('fBody').value,
     })
+    if ($('fUser').value && $('fPass').value) {
+      localStorage.setItem(LS_USER, $('fUser').value.trim())
+      localStorage.setItem(LS_PASS, $('fPass').value)
+    }
     setMsg($('settingsMsg'), 'Settings + template saved', true)
+    showSpam(d.spam)
     updatePreview()
+    loadStatus()
   } catch (e) { setMsg($('settingsMsg'), e.message, false) }
+}
+
+function showSpam(spam) {
+  if (!spam) { $('spamRow').hidden = true; return }
+  $('spamRow').hidden = false
+  $('spamScore').textContent = `${spam.score}/100`
+  const issues = spam.issues?.length ? ' — ' + spam.issues.join('; ') : ''
+  if (spam.score >= 50) { setMsg($('settingsMsg'), `Spam score ${spam.score}. Start will be blocked.${issues}`, false) }
+  else if (spam.score >= 30) { setMsg($('settingsMsg'), `Spam score ${spam.score}. Consider fixing:${issues}`, true) }
+  $('settingsMsg').className = 'msg ' + (spam.score >= 50 ? 'bad' : spam.score >= 30 ? 'warn' : 'ok')
 }
 $('saveSettingsBtn').addEventListener('click', saveSettings)
 $('saveTemplateBtn').addEventListener('click', saveSettings)
@@ -156,7 +196,11 @@ async function uploadCsv(file) {
 $('startBtn').addEventListener('click', async () => {
   try {
     const d = await call({ action: 'start' })
-    toast(`${d.count} emails queued — one every ${limits.gapMinutes} min, max ${limits.daily}/day`)
+    if (d.spamWarning) {
+      toast(`Started, but spam score ${d.spamWarning.score}: ${(d.spamWarning.issues || []).join('; ')}`, false)
+    } else {
+      toast(`${d.count} emails queued — one every ${limits.gapMinutes} min, max ${limits.daily}/day`)
+    }
     loadStatus()
   } catch (e) { toast(e.message, false) }
 })
@@ -164,7 +208,7 @@ $('startBtn').addEventListener('click', async () => {
 $('pauseBtn').addEventListener('click', async () => {
   try {
     const d = await call({ action: $('pauseBtn').textContent === 'Pause' ? 'pause' : 'resume' })
-    toast(d.paused ? 'Paused — sending stopped' : 'Resumed — next email in ~30 min')
+    toast(d.paused ? 'Paused — sending stopped' : 'Resumed — next email in ~5 min')
     loadStatus()
   } catch (e) { toast(e.message, false) }
 })
@@ -187,6 +231,27 @@ function setPill(el, text, cls) {
   el.className = 'pill ' + cls
 }
 
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const notes = [880, 1108.7, 1318.5]
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      const t = ctx.currentTime + i * 0.18
+      gain.gain.setValueAtTime(0.001, t)
+      gain.gain.exponentialRampToValueAtTime(0.3, t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16)
+      osc.start(t)
+      osc.stop(t + 0.18)
+    })
+  } catch (e) { /* audio blocked — ignore */ }
+}
+
 async function loadStatus() {
   if (!pin) return
   try {
@@ -196,10 +261,31 @@ async function loadStatus() {
     const failed = items.filter((i) => i.status === 'failed').length
     const pending = items.length - sent - failed
     const today = d.daily?.count || 0
-    const dailyLimit = d.limits?.daily || 15
-    const gap = d.limits?.gapMinutes || 30
+    const dailyLimit = d.limits?.daily || 100
+    const gap = d.limits?.gapMinutes || 5
     limits = d.limits || limits
     const paused = !!d.queue?.paused
+
+    // credentials banner
+    const credsPill = $('credsPill')
+    if (credsPill) {
+      credsPill.hidden = !!d.credsLoaded
+      credsPill.textContent = 'SMTP credentials not loaded — log in again or re-save settings'
+    }
+
+    // completion notification + beep
+    const processed = sent + failed
+    if (items.length > 0 && processed === items.length && !wasComplete && hadQueue) {
+      beep()
+      toast(`Campaign complete — ${processed}/${items.length} emails processed`, true)
+      try {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Email Automator', { body: `Campaign complete — ${processed}/${items.length} emails processed` })
+        }
+      } catch (e) { /* ignore */ }
+    }
+    if (items.length > 0) hadQueue = true
+    wasComplete = items.length > 0 && processed === items.length
 
     $('statTotal').textContent = items.length
     $('statSent').textContent = sent
@@ -232,6 +318,11 @@ async function loadStatus() {
 
     $('csvCount').textContent = d.draftCount
     $('startBtn').disabled = !d.draftCount
+    $('antiSpamInfo').textContent =
+      `Anti-spam: content scoring (blocks ${50}+), plain-text + HTML parts, ` +
+      `max ${d.limits?.domainLimit || 100}/day per recipient domain, ` +
+      `sends only between ${d.limits?.windowStart ?? 8}:00 and ${d.limits?.windowEnd ?? 21}:00 ` +
+      `(${d.limits?.tz || 'Europe/Brussels'})`
 
     // status breakdown
     const total = items.length || 1
@@ -267,12 +358,13 @@ async function loadAll() {
     if (s.host) $('fHost').value = s.host
     if (s.port) $('fPort').value = s.port
     $('fSecure').checked = s.secure !== undefined ? !!s.secure : Number(s.port) === 465
-    if (s.user) $('fUser').value = s.user
-    if (s.pass) $('fPass').value = s.pass
+    loadLocalCreds()
+    if (d.user && !localStorage.getItem(LS_USER)) $('fUser').value = d.user
     if (s.fromName) $('fFrom').value = s.fromName
     if (s.subject) $('fSubject').value = s.subject
     if (s.body) $('fBody').value = s.body
     updatePreview()
+    showSpam(d.spam)
   } catch (e) { /* ignore */ }
   loadStatus()
 }

@@ -42,7 +42,10 @@
     <section class="panel active" id="panel-dashboard">
       <div class="page-head">
         <h2>Dashboard</h2>
-        <span class="pill" id="workerPill">—</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="pill paused" id="credsPill" hidden>SMTP credentials not loaded</span>
+          <span class="pill" id="workerPill">—</span>
+        </div>
       </div>
 
       <div class="cards">
@@ -67,9 +70,9 @@
       <div class="grid-2">
         <div class="card">
           <div class="card-title">Daily sending limit</div>
-          <div class="kv"><span>Sent today</span><b id="todayCount">0 / 15</b></div>
+          <div class="kv"><span>Sent today</span><b id="todayCount">0 / 100</b></div>
           <div class="progress"><div id="todayBar"></div></div>
-          <div class="hint" id="todayInfo">One email every 30 minutes, max 15 per day</div>
+          <div class="hint" id="todayInfo">One email every 5 minutes, max 100 per day</div>
         </div>
         <div class="card">
           <div class="card-title">Queue progress</div>
@@ -116,6 +119,7 @@
           <button class="btn outline" id="saveTemplateBtn">Save template</button>
         </div>
         <div class="preview-box" id="previewBox"></div>
+        <div class="kv" id="spamRow" hidden><span>Spam score</span><b id="spamScore">—</b></div>
       </div>
 
       <div class="card">
@@ -132,6 +136,7 @@
         <div class="kv"><span>Recipients ready from CSV</span><b id="csvCount">0</b></div>
         <div class="kv"><span>Recipients in active queue</span><b id="queueCount">0</b></div>
         <div class="kv"><span>Paused</span><b id="pausedChip">No</b></div>
+        <div class="hint" id="antiSpamInfo"></div>
       </div>
     </section>
 
@@ -157,7 +162,7 @@
         </div>
         <label>Sender name (optional)</label>
         <input id="fFrom" placeholder="Your name">
-        <div class="hint">Gmail: enable 2-Step Verification, then create an App Password under Google Account → Security.</div>
+        <div class="hint">Your email + password are stored <b>only in this browser</b> (localStorage) and kept in the server's memory just while you're logged in — never written to disk, so they can't be stolen through the platform. Log in again after a server restart to reload them. Gmail: enable 2-Step Verification, then create an App Password under Google Account → Security.</div>
         <div class="btn-row">
           <button class="btn" id="saveSettingsBtn">Save settings</button>
           <button class="btn green" id="testBtn">Send test email</button>

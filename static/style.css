@@ -112,6 +112,7 @@ tr:last-child td { border-bottom:none; }
 /* ============ MISC ============ */
 .msg { font-size:13px; min-height:18px; margin-top:10px; }
 .msg.ok { color:var(--green); }
+.msg.warn { color:var(--amber); }
 .msg.bad { color:var(--red); }
 .preview-box { background:#f8fafc; border:1px solid var(--border); border-radius:9px; padding:12px; font-size:13px; white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,monospace; margin-top:14px; }
 .file-drop { border:2px dashed var(--border); border-radius:10px; padding:24px; text-align:center; color:var(--muted); cursor:pointer; font-size:14px; transition:border-color .15s,color .15s; }
